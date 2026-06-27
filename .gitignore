@@ -221,3 +221,8 @@ __marimo__/
 .clawhub/
 .openclaw/
 skills/
+data/
+expenses/
+scripts/
+node_modules/
+*.json
