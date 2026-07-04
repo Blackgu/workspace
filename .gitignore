@@ -226,3 +226,4 @@ expenses/
 scripts/
 node_modules/
 *.json
+codex/

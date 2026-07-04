@@ -1,0 +1,37 @@
+# 2026-06-30 对话要点
+
+## Cron 任务故障排查与修复
+
+### 问题
+- morning-report-briefing-round1/round2、world-cup-2026-daily-report 三个 cron 任务连续失败
+- 错误：`LLM request failed.` / `Request was aborted`
+
+### 根因分析
+1. **thinking token 导致假卡死**：`thinking: "medium"` 时 reasoning token 阶段长时间无可见产出 → OpenClaw stuck session recovery 在 ~360s 判定 `stalled` → `abort_embedded_run`
+2. **DeepSeek v4-flash 流式连接高峰时段不稳定**：model_call 启动后 15s 出一段 token，后续彻底静默，watchdog 360s 杀
+3. **Fallback 未生效**：watchdog abort 后 failover 判定 `aborted=True`，选择 `surface_error` 而非重试
+
+### 修复措施
+1. 三个 cron 任务 thinking 统一改为 `"off"`
+2. 主模型：deepseek-v4-flash（尝试后切回 v4-pro，最终又切回 v4-flash）
+3. fallback 模型：glm-5.2（已配置，但 watchdog 场景下 fallback 未生效）
+4. **stuckSessionAbortMs 从默认 360000 → 600000（10分钟）**
+   - 配置路径：`diagnostics.stuckSessionAbortMs`
+   - 写入 `/home/ecs-user/.openclaw/openclaw.json`
+   - 已执行 `sudo systemctl restart openclaw-gateway.service` 生效
+5. 手动触发 round1/round2 均已成功
+
+### 规则沉淀
+- **所有 cron 任务的 thinking 必须设为 `"off"`**，已写入 MEMORY.md
+- 原因：reasoning token 流式推理中长时间无可见输出 → 触发 stuck session recovery
+
+### 配置参考
+- stuckSessionWarnMs 默认 120000（2min）
+- stuckSessionAbortMs 默认 360000（6min，=warn×3），已改为 600000
+- 最低 abort 阈值：MIN_STALLED_EMBEDDED_RUN_ABORT_MS = 300000（5min）
+
+## 模型相关
+- DeepSeek API 模型列表：deepseek-v4-pro、deepseek-v4-flash（两者均有效）
+- 当前配置的provider：deepseek、hotai(gpt-5.4)、glm(glm-5.2)
+- 默认主模型：deepseek/deepseek-v4-pro
+- v4-flash 为 reasoning 模型，直连 API 测试通过，但 cron 高峰时段流式连接稳定性差
