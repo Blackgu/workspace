@@ -16,9 +16,3 @@
 - 支出分类：餐饮、交通、购物、住房、娱乐、医疗、数码、日用、装修、其他
 - 收入分类：工资、投资、报销、兼职、其他
 - 查询命令：`node scripts/ledger.js list all`（全部）、`node scripts/ledger.js summary this_month`（月度汇总）
-
-## 环境
-- 仅有 DEEPSEEK_API_KEY 可用，无其他 provider 的 API key
-
-## Cron 任务规范
-- 2026-06-30: 所有 cron 任务的 thinking 必须设为 `"off"`。原因：reasoning token 在流式推理中长时间无可见 token 产出，会触发 OpenClaw 的 stuck session recovery (~360s 无 progress → abort)，导致任务被误杀。绕开方式就是关掉 thinking 避免此问题。
