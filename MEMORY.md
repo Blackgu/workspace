@@ -11,8 +11,10 @@
 - 2026-06-14: 安装任何 skill 前，必须先按 skill-vetter 协议完成安全审查，审查通过后方可安装
 
 ## 记账规范
-- 2026-06-28: 记账统一走 SQLite 数据库 `scripts/ledger.js add`，写入 `data/ledger.db`。memory/ 日记文件仅作摘要参考，不作为主要记账入口。
-- 账户：1628储蓄卡、8429信用卡、2018工资卡
-- 支出分类：餐饮、交通、购物、住房、娱乐、医疗、数码、日用、装修、其他
-- 收入分类：工资、投资、报销、兼职、其他
-- 查询命令：`node scripts/ledger.js list all`（全部）、`node scripts/ledger.js summary this_month`（月度汇总）
+- 2026-06-28: 记账统一走 SQLite `scripts/ledger.js add`（JSON 入参），写入 `data/ledger.db`。
+  memory/ 日记文件仅作摘要参考，不作为主要记账入口。
+- 新增示例：
+  `node scripts/ledger.js add '{"type":"expense","amount":50,"category":"餐饮","account":"8429信用卡","description":"午饭","date":"2026-07-05"}'`
+- 账户/分类以数据库为准，记账前用 `node scripts/ledger.js accounts`、
+  `node scripts/ledger.js categories [expense|income]` 查询；分类不存在会被拒绝，勿凭记忆臆造。
+- 汇总：`node scripts/ledger.js summary this_month`（也支持 today/yesterday/this_week/last_month）。

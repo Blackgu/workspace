@@ -58,9 +58,4 @@
 - 需要决策时主动问：实现方式有二选以上的、影响范围不确定的，用选择题问而不是替用户决定
 
 ## 开发任务委托
-当收到写代码、改代码、调试、构建、跑测试等开发任务时,按以下流程执行:
-1. 用 `sessions_spawn({ runtime:"acp", agentId:"codex", cwd:"<对应仓库路径>" })` 把任务派发给 codex。
-2. 紧接着调用 `sessions_yield` 等待 codex 完成, 不要在 codex 返回结果前结束当前 turn。
-3. 收到 codex 的结果后,再向用户汇总。
-
-关键:步骤 2 的 `sessions_yield` 不可省略。如果在 codex 完成前就结束 turn 并回复用户,codex 的结果可能因 session 并发冲突而丢失,导致用户收不到代码执行结果。非开发任务(问答、规划、查资料)自己处理, 不需要派发。
+开发任务(写代码、改代码、调试、构建、测试)派发给 codex,不要自己写。流程:先 `sessions_spawn({ runtime:"acp", agentId:"codex", cwd })` 派发,再 `sessions_yield` 等结果,收到后汇总给用户。`sessions_yield` 不可省略 —— 省略后 codex 结果会因 session 并发冲突丢失。非开发任务自己处理。
