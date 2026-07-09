@@ -15,12 +15,16 @@
 
 ## 每日对话记忆归档检查
 - **每次心跳都触发，但距上次归档超过 4 小时才执行实际检查**
+- ⚠️ **心跳在隔离 session 中运行，必须通过工具读取主 session 对话内容**
+  - 使用 `sessions_history(sessionKey: "main", limit: 30)` 获取主会话最近对话
+  - 使用 `sessions_list` 确认主 session 的 key（通常为包含 "main" 和 "openclaw-weixin" 的 session）
+  - 如果 `sessions_history` 返回空或无法读取：说明心跳隔离 session 缺少工具权限，跳过并回复 HEARTBEAT_OK
 - 判断方法：检查 memory/ 目录下今天的日志文件 memory/YYYY-MM-DD.md 的最后修改时间
   - 如果距上次修改不足 4 小时：跳过，回复 HEARTBEAT_OK
   - 如果距上次修改超过 4 小时或文件不存在：执行以下检查:
     - 检查 memory/ 目录下今天的日志文件 memory/YYYY-MM-DD.md 是否存在（注意：不是 briefing 文件）
     - 如果今天有过对话但日志文件不存在：
-      1. 回顾今天的对话要点（关键决策、学到的信息、待办事项）
+      1. 通过 sessions_history 回顾今天的对话要点（关键决策、学到的信息、待办事项）
       2. 创建 memory/YYYY-MM-DD.md 文件并写入要点
       3. 发送通知「📝 已自动归档今日对话要点」到微信主会话
     - 如果今天没有对话记录：回复 HEARTBEAT_OK
