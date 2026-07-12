@@ -20,21 +20,20 @@
     - 如果今天有过对话但日志文件不存在：
       1. 通过 sessions_history 回顾今天的对话要点（关键决策、学到的信息、待办事项）
       2. 创建 memory/YYYY-MM-DD.md 文件并写入要点
-      3. 发送通知「📝 已自动归档今日对话要点」到微信主会话
+      3. 静默完成，回复 HEARTBEAT_OK（不调用 sessions_send 推送通知）
     - 如果今天没有对话记录：回复 HEARTBEAT_OK
     - 如果日志文件已存在：检查最近4小时是否有内容要追加
       1. 决策、规则变更、技术方案、任务结论等必须追加
       2. 闲聊、重复讨论、无明确结论的内容跳过
+      3. 追加完成后静默结束，回复 HEARTBEAT_OK
     - 记录格式：二级标题分类，每条要点用「-HH:MM +人物 +核心内容」
       1. 每条日志条目必须以 HH:MM（24小时制，如 08:00、14:30）开头
       2. 无法确定具体时间的，使用大致时间段（如 上午、下午 等）替代
-- sessions_send 行为约束
-  - 每次心跳只允许调用一次 `sessions_send` 向主会话发送通知
-  - 通知内容只能是一句简短的归档通知（如「📝 已自动归档今日对话要点」）
-  - 调用 `sessions_send` 后立即停止回复，不要再生成任何后续文本、不再做任何解释
-  - 不要在 `sessions_send` 后输出 "Now let me send..." 之类的过渡语
+- 🔇 归档检查全程静默：不调用 sessions_send，不推送任何通知到微信
+  - 归档结果仅在 HEARTBEAT_OK 中自然体现，不需要主动告知用户
+  - 这是有意设计——归档是后台例行任务，用户无需被打扰
 
-## 每日会话清理
+## 每日会话清理 & 人格文件push
 - 在 21:30-22:00 时段内每次心跳都触发，但每天只执行一次
 - 判断方法：检查 memory/ 目录下是否存在 `last-session-cleanup.txt` 文件，读取其中记录的日期
   - 如果记录日期与今天相同：说明今天已执行，跳过，回复 HEARTBEAT_OK
@@ -45,30 +44,48 @@
   2. cron 隔离会话，不清理
   3. codex 子会话，且已经是正常完成状态，执行清理
   4. 僵尸会话，执行清理
-- 执行完成，发送通知「✅已完成今日会话清理」到微信主会话
+- 清理完成后，执行 git 提交推送：
+  1. `cd /home/ecs-user/.openclaw/workspace`
+  2. `git add .`
+  3. `git commit -m "[heartbeat] 每日会话清理 & 文件同步 $(date '+%Y-%m-%d')"`
+  4. `git push`
+- 执行完成，发送通知「✅已完成今日会话清理 & 文件push」到微信主会话
 - 清理完成后，在 memory/last-session-cleanup.txt 中写入今天的日期
 
 # Polymarket 赔率监控
 ## 巡检条件
 - 活跃时段：07:00-23:00（北京时间）
 - 巡检频率：每 30 分钟
+- 在活跃时段内每次心跳都触发，非活跃时段跳过
+
+## 快照存储
+- 基线文件：`data/.polymarket-snapshot.json`
+- 格式：`{"updatedAt": "ISO时间", "topMarkets": [{"slug":"...", "title":"...", "yesPrice":0.XX, "volume24hr":0}], "top10Slugs": ["slug1",...]}`
+- 每次巡检完成后，用本次最新数据覆盖写入该文件
+- 首次运行（文件不存在）时：只写入快照，不做异动对比，不推送通知
 
 ## 巡检项
 ### 热门市场赔率异动
-- 查询 Polymarket 当前交易量 Top 5 的活跃市场
-- 对比上一次巡检时记录的赔率
+- 调用 Gamma API `GET /events?active=true&closed=false&order=volume_24hr&ascending=false&limit=5` 获取 Top 5
+- 对每个市场取第一个 token_id，用 CLOB API `GET /price?token_id=...&side=BUY` 获取 Yes 价格
+- 读取 `data/.polymarket-snapshot.json` 中的上一次快照
+- 对比：`|currentPrice - snapshotPrice| / snapshotPrice > 0.05` 视为异动
 - 如果任意市场赔率变化超过 5%：
-  → 调用大模型分析可能原因
-  → 推送到微信主会话：市场名称 + 变化幅度 + 分析摘要
+  → 推送到微信主会话（sessions_send）："⚡ 赔率异动：[市场名] Yes X% → Y%（变化 ±Z%）"
 - 如果所有市场赔率波动在 5% 以内：
-  → HEARTBEAT_OK
+  → 无通知
 
 ### 新增高交易量市场
-- 查询 Polymarket 24h 交易量 Top 10
-- 如果出现上一次巡检时不在 Top 10 中的新市场：
-  → 推送到微信主会话："发现新热门市场：[名称]，当前赔率 [X]"
+- 调用 Gamma API 获取 24h 交易量 Top 10 的 slug 列表
+- 对比 `data/.polymarket-snapshot.json` 中的 `top10Slugs`
+- 如果出现新 slug（不在上次列表中）：
+  → 推送到微信主会话："🆕 新热门市场：[名称]，当前赔率 [X]"
 - 如果 Top 10 无变化：
-  → HEARTBEAT_OK
+  → 无通知
+
+### 巡检收尾
+- 无论是否有异动，每次巡检结束都更新 `data/.polymarket-snapshot.json`
+- 仅在推送异动/新市场通知时调用 `sessions_send`，每次心跳最多调用一次
 
 ## 默认行为
 - 以上检查项在对应时段外或均无异常时，回复 HEARTBEAT_OK
