@@ -10,6 +10,9 @@
 ## 安全规则
 - 2026-06-14: 安装任何 skill 前，必须先按 skill-vetter 协议完成安全审查，审查通过后方可安装
 
+## 航班查询
+- 2026-07-09: 国内航班/机票查询使用 flyai（飞猪），国际航班/机票查询使用 flightclaw（Google Flights）
+
 ## 记账规范
 - 2026-06-28: 记账统一走 SQLite `scripts/ledger.js add`（JSON 入参），写入 `data/ledger.db`。
   memory/ 日记文件仅作摘要参考，不作为主要记账入口。
