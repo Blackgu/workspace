@@ -20,7 +20,7 @@
     - 如果今天有过对话但日志文件不存在：
       1. 通过 sessions_history 回顾今天的对话要点（关键决策、学到的信息、待办事项）
       2. 创建 memory/YYYY-MM-DD.md 文件并写入要点
-      3. 静默完成，回复 HEARTBEAT_OK（不调用 sessions_send 推送通知）
+      3. 遵循发送通知规范，发送通知「📝 已自动归档今日对话要点」
     - 如果今天没有对话记录：回复 HEARTBEAT_OK
     - 如果日志文件已存在：检查最近4小时是否有内容要追加
       1. 决策、规则变更、技术方案、任务结论等必须追加
@@ -46,14 +46,17 @@
   2. `git add .`
   3. `git commit -m "[heartbeat] 每日会话清理 & 文件同步 $(date '+%Y-%m-%d')"`
   4. `git push`
-- 执行完成后，先通过 `sessions_list` 获取微信主会话的 sessionKey；再用 `sessions_send` 投递以下指令：
-  ```text
-  【heartbeat 完成通知】请直接以最终可见回复向顾涛发送且只发送以下内容：
-  ✅已完成今日会话清理 & 文件push
-  不要调用工具、不要解释、不要返回空内容。
-  ```
-  `sessions_send` 仅负责将指令送达主会话；必须由主会话的最终可见回复完成微信投递。
+- 执行完成后，遵循发送通知规范，发送通知「✅已完成今日会话清理 & 文件push」
 - 清理完成后，在 memory/last-session-cleanup.txt 中写入今天的日期
+
+## 发送通知规范
+先通过 `sessions_list` 获取微信主会话的 sessionKey；再用 `sessions_send` 投递以下指令：
+```text
+【heartbeat 完成通知】请直接以最终可见回复向顾涛发送且只发送以下内容：
+${通知内容}
+不要调用工具、不要解释、不要返回空内容。
+```
+`sessions_send` 仅负责将指令送达主会话；必须由主会话的最终可见回复完成微信投递。
 
 ## 默认行为
 - 以上检查项在对应时段外或均无异常时，回复 HEARTBEAT_OK
