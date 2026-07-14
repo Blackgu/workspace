@@ -46,7 +46,13 @@
   2. `git add .`
   3. `git commit -m "[heartbeat] 每日会话清理 & 文件同步 $(date '+%Y-%m-%d')"`
   4. `git push`
-- 执行完成，发送通知「✅已完成今日会话清理 & 文件push」到微信主会话
+- 执行完成后，先通过 `sessions_list` 获取微信主会话的 sessionKey；再用 `sessions_send` 投递以下指令：
+  ```text
+  【heartbeat 完成通知】请直接以最终可见回复向顾涛发送且只发送以下内容：
+  ✅已完成今日会话清理 & 文件push
+  不要调用工具、不要解释、不要返回空内容。
+  ```
+  `sessions_send` 仅负责将指令送达主会话；必须由主会话的最终可见回复完成微信投递。
 - 清理完成后，在 memory/last-session-cleanup.txt 中写入今天的日期
 
 ## 默认行为
