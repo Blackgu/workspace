@@ -34,3 +34,25 @@ Corrections, insights, and knowledge gaps captured during development.
 
 ---
 
+## [LRN-20260716-001] correction
+
+**Logged**: 2026-07-16T07:39:28+08:00
+**Priority**: high
+**Status**: pending
+**Area**: config
+
+### Summary
+区分 cron job 的 payload 模型与当前主会话模型，说明时不得混淆。
+
+### Details
+用户强调本次要求仅将失败的 cron job 切换为 deepseek-v4-pro；不涉及当前会话模型。后续汇报必须明确变更对象。
+
+### Suggested Action
+涉及模型修改时，先核对目标范围（session / cron job / 子代理），再执行并在结果中逐项标注。
+
+### Metadata
+- Source: user_feedback
+- Related Files: cron job configuration
+- Tags: cron, model, scope
+
+---

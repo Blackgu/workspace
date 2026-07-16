@@ -1,34 +1,28 @@
 # Heartbeat 巡检清单
 
+## 强制执行顺序
+- 多项巡检同时到期时，必须按以下顺序串行完成：**1. 每日记忆归档兜底检查 → 2. 资讯日报检查 → 3. 每日会话清理**。
+- 每日记忆归档由独立 cron 作为主任务；heartbeat 仅检查是否漏归档，必要时才补救。
+- 会话清理的确认、无可清理会话、Git 状态或任何其他任务，**不得**中断或跳过已到期的归档兜底检查。
+- 在全部到期检查完成前，禁止回复 `HEARTBEAT_OK`。
+
 ## 资讯日报完整性检查
 - 在 08:00-09:00 时段内执行此项检查
 - 检查 memory/ 目录下今天的日报文件 memory/YYYY-MM-DD-report-briefing.md 是否存在
-- 如果文件不存在：发送告警「⚠️ 今日资讯日报未生成，请检查 Cron 任务状态」
-- 如果文件存在但缺少「✅二轮采集完成」标记：发送提醒「资讯日报第二轮采集尚未完成」
+- 如果文件不存在：遵循发送通知规范，发送告警「⚠️ 今日资讯日报未生成，请检查 Cron 任务状态」
+- 如果文件存在但缺少「✅二轮采集完成」标记：遵循发送通知规范，发送提醒「资讯日报第二轮采集尚未完成」
 - 如果文件存在且包含「✅二轮采集完成」：一切正常，回复 HEARTBEAT_OK
 
-## 每日对话记忆归档检查
-- **每次心跳都触发，但距上次归档超过 4 小时才执行实际检查**
-- ⚠️ **心跳在隔离 session 中运行，必须通过工具读取主 session 对话内容**
-  - 使用 `sessions_history(sessionKey: "main", limit: 30)` 获取主会话最近对话
-  - 使用 `sessions_list` 确认主 session 的 key（通常为包含 "main" 和 "openclaw-weixin" 的 session）
-  - 如果 `sessions_history` 返回空或无法读取：说明心跳隔离 session 缺少工具权限，跳过并回复 HEARTBEAT_OK
-- 判断方法：检查 memory/ 目录下今天的日志文件 memory/YYYY-MM-DD.md 的最后修改时间
-  - 如果距上次修改不足 4 小时：跳过，回复 HEARTBEAT_OK
-  - 如果距上次修改超过 4 小时或文件不存在：执行以下检查:
-    - 检查 memory/ 目录下今天的日志文件 memory/YYYY-MM-DD.md 是否存在（注意：不是 briefing 文件）
-    - 如果今天有过对话但日志文件不存在：
-      1. 通过 sessions_history 回顾今天的对话要点（关键决策、学到的信息、待办事项）
-      2. 创建 memory/YYYY-MM-DD.md 文件并写入要点
-      3. 遵循发送通知规范，发送通知「📝 已自动归档今日对话要点」
-    - 如果今天没有对话记录：回复 HEARTBEAT_OK
-    - 如果日志文件已存在：检查最近4小时是否有内容要追加
-      1. 决策、规则变更、技术方案、任务结论等必须追加
-      2. 闲聊、重复讨论、无明确结论的内容跳过
-      3. 追加完成后静默结束，回复 HEARTBEAT_OK
-    - 记录格式：二级标题分类，每条要点用「-HH:MM +人物 +核心内容」
-      1. 每条日志条目必须以 HH:MM（24小时制，如 08:00、14:30）开头
-      2. 无法确定具体时间的，使用大致时间段（如 上午、下午 等）替代
+## 每日记忆归档兜底检查
+- **主任务为「每日记忆归档 cron」**（每4小时运行）；heartbeat 不执行常规归档。
+- 仅在以下情况执行补救：当天日志 `memory/YYYY-MM-DD.md` 不存在，或其最后修改时间距今超过 **6小时**。
+- 触发补救时：
+  1. 用 `sessions_list(agentId: "main", search: "openclaw-weixin")` 定位当前微信主会话（如参数必填，`label` 仅传单个空格）。
+  2. 仅选择 `deliveryContext.accountId` 为 `b7256e252baa-im-bot`、且 `deliveryContext.to` 为 `o9cq80w9dtbrD6fURdBIJd188imE@im.wechat` 的完整 key，记为 `wechatMainSessionKey`。
+  3. 用 `sessions_history(sessionKey: wechatMainSessionKey, limit: 100)` 回顾当天对话；若无当天对话则不写入、不通知。
+  4. 有有效增量时，按“二级标题 + `-HH:MM 人物：核心内容`”格式创建或追加当天日志，仅记录决策、规则变更、技术方案、任务结论、待办、已确认故障根因/修复；跳过闲聊、重复和无结论内容。
+  5. 成功创建或追加后，遵循发送通知规范发送「📝 已自动归档今日对话要点」。
+- 未达到补救条件或无有效增量时，静默继续其他到期检查。
 
 ## 每日会话清理 & 人格文件push
 - 在 21:30-22:00 时段内每次心跳都触发，但每天只执行一次
@@ -50,13 +44,20 @@
 - 清理完成后，在 memory/last-session-cleanup.txt 中写入今天的日期
 
 ## 发送通知规范
-先通过 `sessions_list` 获取微信主会话的 sessionKey；再用 `sessions_send` 投递以下指令：
+使用已定位的 `wechatMainSessionKey` 调用 `sessions_send`。调用参数必须遵循以下形式：
+- `sessionKey: wechatMainSessionKey`
+- `agentId: "main"`
+- `label: " "`（**单个空格**，仅用于满足工具参数格式；不得填写任何真实 label）
+
+这表示路由只依赖完整的 `sessionKey`，避免 `sessionKey` 与实际 label 同时存在而被工具拒绝。不得重新以 `label: "main"` 搜索或投递。
+
+投递以下指令：
 ```text
 【heartbeat 完成通知】请直接以最终可见回复向顾涛发送且只发送以下内容：
 ${通知内容}
 不要调用工具、不要解释、不要返回空内容。
 ```
-`sessions_send` 仅负责将指令送达主会话；必须由主会话的最终可见回复完成微信投递。
+`sessions_send` 仅负责将指令送达微信主会话；必须由该会话的最终可见回复完成微信投递。若 `sessions_send` 返回错误，输出简短告警说明投递失败原因，不能将其视为已通知。
 
 ## 默认行为
 - 以上检查项在对应时段外或均无异常时，回复 HEARTBEAT_OK
