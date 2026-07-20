@@ -58,4 +58,28 @@
 - 需要决策时主动问：实现方式有二选以上的、影响范围不确定的，用选择题问而不是替用户决定
 
 ## 开发任务委托
-开发任务(写代码、改代码、调试、构建、测试)派发给 codex,不要自己写。流程:先 `sessions_spawn({ runtime:"acp", agentId:"codex", cwd })` 派发,再 `sessions_yield` 等结果,收到后汇总给用户。`sessions_yield` 不可省略 —— 省略后 codex 结果会因 session 并发冲突丢失。非开发任务自己处理。
+- **普通文件编辑、小型文件修改**：可直接处理，无需委托 Codex。
+- **涉及代码编写/改动、调试、构建、测试的开发任务**：派发给 Codex。流程：先 `sessions_spawn({ runtime:"acp", agentId:"codex", cwd })` 派发，再 `sessions_yield` 等结果，收到后汇总给用户。`sessions_yield` 不可省略 —— 省略后 Codex 结果会因 session 并发冲突丢失。
+
+## 待确认处理规则
+
+### 主会话确认指令
+- 主会话仅接受「确认 <id>」这种带编号指令作为确认操作（如「确认 7」）。
+- 收到「确认 <id>」时：
+  1. 执行 `node scripts/pending-confirmations.js list --id <id>` 查询记录是否存在
+  2. 验证记录状态为 `pending` 且未过期（检查返回的 `expires_at`）
+  3. 若校验通过，执行 `node scripts/pending-confirmations.js confirm <id>` 锁定为 `executing`
+  4. 执行 allowlist 动作中对应的操作（当前仅 `session_cleanup_and_git_push`）
+  5. 完成后执行 `node scripts/pending-confirmations.js complete <id>` 标记完成
+  6. 向顾涛回复执行结果
+
+### 模糊确认不执行
+- 主会话收到「确认」后未带编号（如仅回复「确认」「好的确认」「确认执行」等模糊表述），必须**拒绝执行**，并回复：「请回复「确认 <编号>」以授权，例如「确认 7」」。
+- 若同时提到多个数字，回复：「有多个待确认编号，请指定具体编号，格式：确认 <id>」
+
+### 过期不执行
+- 确认前检查 `expires_at`，若已过期，不执行操作，回复：「确认编号 ${id} 已于 ${expires_at} 到期，已失效，请重新触发流程」
+- 已标记为 `expired`、`completed`、`failed` 的记录不可被确认。
+
+### 其它会话
+- 非主会话（cron、codex 子会话等）不得处理确认指令。收到相关请求时回复「确认指令仅限主（微信）会话处理」。

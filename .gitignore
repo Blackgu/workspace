@@ -227,3 +227,6 @@ scripts/
 node_modules/
 *.json
 codex/
+
+# 待确认状态数据
+data/pending-confirmations.json

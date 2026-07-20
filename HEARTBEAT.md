@@ -5,6 +5,7 @@
 - 每日记忆归档由独立 cron 作为主任务；heartbeat 仅检查是否漏归档，必要时才补救。
 - 会话清理的确认、无可清理会话、Git 状态或任何其他任务，**不得**中断或跳过已到期的归档兜底检查。
 - 在全部到期检查完成前，禁止回复 `HEARTBEAT_OK`。
+- 若主会话存在待交付的子会话任务：heartbeat 可先完成本轮必要巡检，但**不得**回复 `HEARTBEAT_OK` 或结束等待；应继续等待子会话完成回传，先向顾涛交付任务结果，后续 heartbeat 再按常规流程处理。
 
 ## 资讯日报完整性检查
 - 在 08:00-09:00 时段内执行此项检查
@@ -19,29 +20,44 @@
 - 触发补救时：
   1. 用 `sessions_list(agentId: "main", search: "openclaw-weixin")` 定位当前微信主会话（如参数必填，`label` 仅传单个空格）。
   2. 仅选择 `deliveryContext.accountId` 为 `b7256e252baa-im-bot`、且 `deliveryContext.to` 为 `o9cq80w9dtbrD6fURdBIJd188imE@im.wechat` 的完整 key，记为 `wechatMainSessionKey`。
-  3. 用 `sessions_history(sessionKey: wechatMainSessionKey, limit: 100)` 回顾当天对话；若无当天对话则不写入、不通知。
-  4. 有有效增量时，按“二级标题 + `-HH:MM 人物：核心内容`”格式创建或追加当天日志，仅记录决策、规则变更、技术方案、任务结论、待办、已确认故障根因/修复；跳过闲聊、重复和无结论内容。
+  3. 用 `sessions_history(sessionKey: wechatMainSessionKey, limit: 200)` 回顾当天对话；读取当天归档文件中记录的“上次归档时间”，仅筛选该时间点之后的消息。若无当天对话或无新增有效消息则不写入、不通知。
+  4. 有有效增量时，按“二级标题 + `-HH:MM 人物：核心内容`”格式创建或追加当天日志；在文件顶部更新“上次归档时间”。仅记录决策、规则变更、技术方案、任务结论、待办、已确认故障根因/修复；跳过闲聊、重复和无结论内容。
   5. 成功创建或追加后，遵循发送通知规范发送「📝 已自动归档今日对话要点」。
 - 未达到补救条件或无有效增量时，静默继续其他到期检查。
 
-## 每日会话清理 & 人格文件push
-- 在 21:30-22:00 时段内每次心跳都触发，但每天只执行一次
+## 每日会话清理 & 人格文件push（待确认机制）
+- 在 21:30-22:00 时段内每次心跳都触发，但每天只执行一次。每次 heartbeat 开始时先执行过期扫描（`node scripts/pending-confirmations.js expire-scan`），清理已超时的待确认记录。
 - 判断方法：检查 memory/ 目录下是否存在 `last-session-cleanup.txt` 文件，读取其中记录的日期
   - 如果记录日期与今天相同：说明今天已执行，跳过，回复 HEARTBEAT_OK
-  - 如果记录日期不是今天或文件不存在：执行以下检查
-- 检查 openclaw 的会话列表（活跃/非活跃）
-- 执行：
-  1. **主会话（微信）** 必须保留
-  2. cron 隔离会话，不清理
-  3. codex 子会话，且已经是正常完成状态，执行清理
-  4. 僵尸会话，执行清理
-- 清理完成后，执行 git 提交推送：
-  1. `cd /home/ecs-user/.openclaw/workspace`
-  2. `git add .`
-  3. `git commit -m "[heartbeat] 每日会话清理 & 文件同步 $(date '+%Y-%m-%d')"`
-  4. `git push`
-- 执行完成后，遵循发送通知规范，发送通知「✅已完成今日会话清理 & 文件push」
-- 清理完成后，在 memory/last-session-cleanup.txt 中写入今天的日期
+  - 如果记录日期不是今天或文件不存在：执行以下待确认流程
+- **待确认流程（替代原先直接执行）：**
+  1. 检查 openclaw 的会话列表（活跃/非活跃），但**不立即执行清理**
+  2. 创建待确认记录：`node scripts/pending-confirmations.js create session_cleanup_and_git_push --ttl-minutes 30`
+  3. 记录返回的 JSON 中的 `id` 和 `expires_at`（到期时间 = 当前时间 + 30分钟）
+  4. 遵循发送通知规范，向顾涛发送以下格式的通知：
+     ```
+     【待确认操作】每日会话清理 & Git push
+     确认编号：${id}
+     请回复「确认 ${id}」以授权执行
+     该确认将在 ${expires_at}（30分钟后）到期
+     ```
+  5. **等待顾涛回复确认**。在顾涛确认前，此心跳轮次不得回复 HEARTBEAT_OK 或跳过。
+- **确认后执行：**
+  1. 执行 `node scripts/pending-confirmations.js confirm <id>` 锁定为 executing
+  2. 执行会话清理：
+     1. **主会话（微信）** 必须保留
+     2. cron 隔离会话，不清理
+     3. codex 子会话，且已经是正常完成状态，执行清理
+     4. 僵尸会话，执行清理
+  3. 执行 git 提交推送：
+     1. `cd /home/ecs-user/.openclaw/workspace`
+     2. `git add .`
+     3. `git commit -m "[heartbeat] 每日会话清理 & 文件同步 $(date '+%Y-%m-%d')"`
+     4. `git push`
+  4. 执行 `node scripts/pending-confirmations.js complete <id>` 标记完成
+  5. 遵循发送通知规范，发送通知「✅已完成今日会话清理 & 文件push」
+  6. 在 memory/last-session-cleanup.txt 中写入今天的日期
+- **确认失败/过期：** 若顾涛回复拒绝，执行 `node scripts/pending-confirmations.js fail <id>`；若过期未确认，扫描自动标记为 expired。均不执行清理和 push。
 
 ## 发送通知规范
 使用已定位的 `wechatMainSessionKey` 调用 `sessions_send`。调用参数必须遵循以下形式：
