@@ -76,3 +76,21 @@ A temporary test cleanup used a recursively deleting shell command, violating wo
 For future temporary test cleanup, retain the temporary directory or remove files individually with an approved non-recursive method.
 
 ---
+
+## [ERR-20260721-001] image_analysis
+
+**Logged**: 2026-07-21T09:44:00+08:00
+**Priority**: low
+**Status**: pending
+**Area**: infra
+
+### Summary
+Image analysis rejected model alias `auto`.
+
+### Details
+The image tool returned `Unknown model: openai/auto` for an inbound image. Retry with an explicitly supported model.
+
+### Suggested Action
+Use a concrete available vision model or inspect provider model availability.
+
+---
