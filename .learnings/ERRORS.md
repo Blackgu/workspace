@@ -94,3 +94,33 @@ The image tool returned `Unknown model: openai/auto` for an inbound image. Retry
 Use a concrete available vision model or inspect provider model availability.
 
 ---
+
+## [ERR-20260722-001] config_edit_sandbox_scope
+
+**Logged**: 2026-07-22T07:20:00+08:00
+**Priority**: low
+**Status**: pending
+**Area**: tooling
+
+### Summary
+`apply_patch` cannot modify `~/.openclaw/openclaw.json` because it is outside the workspace sandbox.
+
+### Suggested Action
+Use an OpenClaw-owned configuration writer or an approved host command to apply and validate global configuration updates.
+
+---
+
+## [ERR-20260722-002] image_tool_model_resolution
+
+**Logged**: 2026-07-22T07:25:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: media
+
+### Summary
+The `image` tool rejected the configured custom vision model as unknown despite the model catalog listing it as image-capable.
+
+### Suggested Action
+Test automatic default-model resolution, then inspect media provider routing if it still cannot resolve the configured `imageModel`.
+
+---
